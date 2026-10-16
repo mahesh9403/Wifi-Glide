@@ -73,12 +73,14 @@ also identifies the next product choice: earlier candidate evaluation near `-67 
 more conservative `-75 dBm` switching trigger.
 
 The candidate policy has now been tightened: the Mac POC filters the scan to explicitly approved
-SSIDs that also match a saved personal-security CoreWLAN profile and have a password present in
-the user/system keychain. It excludes open, enterprise, OWE, unknown, and WEP profiles in the
-strict mode, deduplicates multiple BSSIDs to the strongest representative per SSID, and does not
-run speed tests against candidates. RSSI/SNR are used before association; bounded TCP/HTTPS
-readiness checks are used only after one candidate is selected. A rebuilt ad-hoc app requires its
-Location Services permission to be granted again if macOS treats the new signature as a new app.
+SSIDs that match a remembered personal-security CoreWLAN profile. It excludes open, enterprise,
+OWE, unknown, and WEP profiles in the strict mode, deduplicates multiple BSSIDs to the strongest
+representative per SSID, and does not run speed tests against candidates. RSSI/SNR are used before
+association; bounded TCP/HTTPS readiness checks are used only after one candidate is selected.
+The POC deliberately avoids the System keychain, because checking it can trigger an administrator
+prompt. The active path still fails closed if it cannot obtain a user-keychain credential. A
+rebuilt ad-hoc app requires its Location Services permission to be granted again if macOS treats
+the new signature as a new app.
 
 ## Network finding that changes the product decision
 

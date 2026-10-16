@@ -9,15 +9,15 @@ consideration only when all of these conditions hold:
 visible now
 AND explicitly approved by the user
 AND remembered by macOS as a compatible personal-security profile
-AND a saved Wi-Fi password is present in the user/system keychain
+AND macOS has a remembered compatible personal-security profile
 AND not excluded or in failure cooldown
 ```
 
-The Mac POC uses CoreWLAN's preferred network profiles to match a visible SSID and uses a
-presence-only `CWKeychainFindWiFiPassword` lookup in the **user keychain**. It does not retrieve
-the password just to rank the candidate. The password is retrieved only at the final, explicitly
-enabled association step. The POC intentionally avoids the System keychain because doing so can
-trigger an administrator-authentication prompt on a personal Mac.
+The Mac POC uses CoreWLAN's preferred network profiles to match a visible SSID and security type.
+This is the no-admin proxy for a saved personal network. It does not inspect the System keychain,
+because doing so can trigger an administrator-authentication prompt on a personal Mac. The active
+path still performs a just-in-time user-keychain lookup before association and refuses to proceed
+if it cannot obtain a usable credential.
 
 The initial POC intentionally excludes:
 
@@ -32,7 +32,7 @@ coffee shops, offices, hotels, or old home networks that the user does not want 
 select automatically. The effective set is an intersection:
 
 ```text
-explicitly approved SSIDs ∩ saved password-backed SSIDs
+explicitly approved SSIDs ∩ macOS remembered personal profiles
 ```
 
 Exclusions must always win over approvals.
@@ -139,8 +139,8 @@ readiness. That profile should be validated in observe-only mode before active s
 
 ## Acceptance criteria
 
-- No visible open, enterprise, OWE, unknown, or uncredentialed SSID produces a switch decision in
-  strict saved-password mode.
+- No visible open, enterprise, OWE, unknown, or unremembered SSID produces a switch decision in
+  strict saved-profile mode.
 - Two BSSIDs for one SSID produce one candidate representative.
 - A strong but stale representative is rejected rather than replaced by a weaker duplicate with
   inconsistent freshness.

@@ -339,7 +339,7 @@ private final class CoreWLANClient {
                 guard let ssid = network.ssid,
                       let ssidData = network.ssidData,
                       approvedSSIDs.contains(ssid),
-                      isSavedPasswordBacked(network: network, interface: interface) else {
+                      isSavedPersonalProfile(network: network, interface: interface) else {
                     continue
                 }
                 if let existing = strongestBySSIDData[ssidData], existing.rssiValue >= network.rssiValue {
@@ -412,7 +412,7 @@ private final class CoreWLANClient {
                 let targetNetworks = try interface.scanForNetworks(withSSID: ssid.data(using: .utf8))
                 guard let target = targetNetworks
                     .filter({
-                        $0.ssid == ssid && isSavedPasswordBacked(network: $0, interface: interface)
+                        $0.ssid == ssid && isSavedPersonalProfile(network: $0, interface: interface)
                     })
                     .sorted(by: { lhs, rhs in lhs.rssiValue > rhs.rssiValue })
                     .first else {
@@ -520,7 +520,7 @@ private final class CoreWLANClient {
         }
         let targetNetworks = try interface.scanForNetworks(withSSID: ssid.data(using: .utf8))
         guard let target = targetNetworks
-            .filter({ $0.ssid == ssid && isSavedPasswordBacked(network: $0, interface: interface) })
+            .filter({ $0.ssid == ssid && isSavedPersonalProfile(network: $0, interface: interface) })
             .sorted(by: { lhs, rhs in lhs.rssiValue > rhs.rssiValue })
             .first else {
             throw CLIError.targetNotVisible(ssid)
@@ -531,7 +531,7 @@ private final class CoreWLANClient {
         try interface.associate(to: target, password: password)
     }
 
-    private func isSavedPasswordBacked(network: CWNetwork, interface: CWInterface) -> Bool {
+    private func isSavedPersonalProfile(network: CWNetwork, interface: CWInterface) -> Bool {
         guard let ssidData = network.ssidData,
               let configuration = interface.configuration() else {
             return false
@@ -544,8 +544,7 @@ private final class CoreWLANClient {
             }
             return network.supportsSecurity(profile.security)
         }
-        guard matchingProfile != nil else { return false }
-        return hasSavedUserPassword(for: ssidData)
+        return matchingProfile != nil
     }
 
     private func isPersonalPasswordSecurity(_ security: CWSecurity) -> Bool {
@@ -553,13 +552,6 @@ private final class CoreWLANClient {
         // (4), generic Personal (5), WPA3 Personal (11), and WPA3 transition (13). Open,
         // enterprise, OWE, unknown, and obsolete WEP profiles are excluded from this POC.
         [2, 3, 4, 5, 11, 13].contains(security.rawValue)
-    }
-
-    private func hasSavedUserPassword(for ssidData: Data) -> Bool {
-        // Deliberately query only the user's keychain. Looking in the System keychain can trigger
-        // an administrator-authentication prompt and is unnecessary for this personal-Mac POC.
-        guard let userDomain = CWKeychainDomain(rawValue: 1) else { return false }
-        return CWKeychainFindWiFiPassword(userDomain, ssidData, nil) == 0
     }
 
     private func savedPassword(for ssid: String) -> String? {
@@ -700,7 +692,7 @@ private func printSnapshot(
     } else {
         print("Current: no Wi-Fi interface is available")
     }
-    print("Eligible saved/password-backed networks: \(snapshot.visible.count)")
+    print("Eligible saved personal networks: \(snapshot.visible.count)")
     for network in snapshot.visible {
         let approved = approvedSSIDs.contains(network.ssid) ? " [approved]" : ""
         print("  \(network.ssid) | RSSI \(network.rssi) dBm | BSSID \(network.bssid ?? "redacted")\(approved)")

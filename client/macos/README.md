@@ -49,9 +49,10 @@ swift run wifi-glide --once \
   --allow-ssid "Bedroom"
 ```
 
-The command prints the current network and **eligible saved/password-backed networks** among the
-explicitly approved SSIDs. Open, enterprise, OWE, unknown, and uncredentialed networks are not
-included. A scan is only a snapshot; it is not a promise that every nearby SSID is visible.
+The command prints the current network and **eligible saved personal networks** among the
+explicitly approved SSIDs. It matches macOS remembered personal-security profiles without reading
+the System keychain. Open, enterprise, OWE, unknown, and unremembered networks are not included. A
+scan is only a snapshot; it is not a promise that every nearby SSID is visible.
 
 ## Observe decisions
 
@@ -67,7 +68,7 @@ swift run wifi-glide --observe \
 
 Observe mode never calls `associate` or `disassociate`. It prints the reason for every decision.
 While the current link is healthy, the loop does not actively scan. When the link is weak or
-unusable, it refreshes the saved/password-backed candidate scan at a bounded cadence and reuses the
+unusable, it refreshes the saved personal-profile candidate scan at a bounded cadence and reuses the
 most recent snapshot between scans. Same-SSID results are reduced to the strongest representative.
 
 ## Opt into active switching
@@ -104,13 +105,13 @@ macOS may require Location Services to expose SSIDs and BSSIDs to CoreWLAN. If t
 missing identifiers, enable Location Services for the terminal or a signed/bundled Wi-Fi Glide
 application in **System Settings → Privacy & Security → Location Services**, then retry.
 
-The CLI does not print Wi-Fi passwords. Candidate filtering checks only whether a compatible saved
-personal-security profile and **user-keychain** password exist; it does not retrieve the password
-for ranking. The active path reads the actual user-keychain credential only after explicit
-active-mode opt-in. The POC deliberately does not inspect the System keychain, so it does not
-require administrator credentials. If no user credential is available, the POC refuses to
-associate rather than passing an undocumented nil password. The credential is held in memory for
-the association call and is not persisted by Wi-Fi Glide.
+The CLI does not print Wi-Fi passwords. Candidate filtering uses macOS's remembered
+personal-security profile as the no-admin eligibility signal and does not retrieve a password for
+ranking. The active path reads an actual user-keychain credential only after explicit active-mode
+opt-in. The POC deliberately does not inspect the System keychain, so it does not require
+administrator credentials. If no user credential is available, the POC refuses to associate rather
+than passing an undocumented nil password. The credential is held in memory for the association
+call and is not persisted by Wi-Fi Glide.
 
 ## Why Wi-Fi Glide does not run speed tests for every candidate
 
