@@ -102,6 +102,12 @@ Keychain status codes are classified without exposing secrets, and CoreWLAN/NSEr
 failures retain their domain, numeric code, and non-secret classification. A candidate with an
 unavailable user credential is no longer emitted as `WOULD-SWITCH` and then rejected late.
 
+Because the observed status `4097` means the existing CoreWLAN user-keychain credential is not
+available to this process, the POC now supports explicit app-owned credential onboarding through
+`--configure-credential <SSID>`. The password is entered with terminal echo disabled and stored in
+the current user's generic-password Keychain namespace. It is never accepted as a command-line
+argument and is only retrieved at the final association boundary.
+
 ## Network finding that changes the product decision
 
 If the physical networks can be changed, the best solution remains network-native roaming:

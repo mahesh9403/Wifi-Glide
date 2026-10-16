@@ -3,6 +3,7 @@ import CoreWLAN
 import Darwin
 import Foundation
 import Network
+import Security
 import WiFiGlideCore
 
 @main
@@ -26,7 +27,13 @@ struct WiFiGlideCLI {
             let engine = DecisionEngine()
             var state = DecisionState()
 
-            if options.mode == .once {
+            if case .configureCredential(let ssid) = options.mode {
+                try client.configureAppCredential(for: ssid)
+                print("Saved Wi-Fi Glide credential for \(ssid) in the user Keychain.")
+                return
+            }
+
+            if case .once = options.mode {
                 let snapshot = try client.snapshot(activeScan: true, approvedSSIDs: options.approvedSSIDs)
                 printSnapshot(
                     snapshot,
@@ -171,7 +178,7 @@ private final class LocationAuthorization: NSObject, @preconcurrency CLLocationM
 }
 
 private struct Options {
-    enum Mode { case once, observe }
+    enum Mode { case once, observe, configureCredential(String) }
 
     let mode: Mode
     let interval: TimeInterval
@@ -202,6 +209,12 @@ private struct Options {
                 mode = .once
             case "--observe":
                 mode = .observe
+            case "--configure-credential":
+                index += 1
+                guard index < arguments.count, !arguments[index].isEmpty else {
+                    throw OptionsError.invalid("--configure-credential requires a non-empty SSID")
+                }
+                mode = .configureCredential(arguments[index])
             case "--auto-switch":
                 activeSwitching = true
             case "--confirm-disruption":
@@ -258,6 +271,8 @@ private struct Options {
     Options:
       --once                    Scan once and print current/eligible saved networks (default)
       --observe                 Run the decision loop until --duration expires
+      --configure-credential SSID
+                                Securely save an approved network password in Wi-Fi Glide's user Keychain
       --allow-ssid NAME         Approve a target SSID; repeat for each allowed network
       --interval SECONDS        Loop interval, minimum 2 seconds (default: 15)
       --duration SECONDS        Observe duration (default: 60)
@@ -338,6 +353,26 @@ private final class CoreWLANClient {
         )
     }
 
+    func configureAppCredential(for ssid: String) throws {
+        guard let ssidData = try rawSSIDData(for: ssid) else {
+            throw CLIError.targetNotVisible(ssid)
+        }
+        guard let password = readHiddenPassword(prompt: "Wi-Fi password for \(ssid): ") else {
+            throw CLIError.credentialInputCancelled
+        }
+        try AppCredentialStore.save(password: password, ssidData: ssidData)
+    }
+
+    private func rawSSIDData(for ssid: String) throws -> Data? {
+        try queue.sync {
+            guard let interface = client.interface() else {
+                throw CLIError.noWiFiInterface
+            }
+            let scanned = try interface.scanForNetworks(withSSID: ssid.data(using: .utf8))
+            return scanned.first(where: { $0.ssid == ssid })?.ssidData
+        }
+    }
+
     func currentNetwork() throws -> WiFiObservation? {
         queue.sync {
             guard let interface = client.interface(), let ssid = interface.ssid(), !ssid.isEmpty else {
@@ -374,7 +409,12 @@ private final class CoreWLANClient {
                     continue
                 }
 
-                let credential = userCredentialStatus(for: ssidData)
+                let credential: (status: Int32, availability: CredentialAvailability)
+                if AppCredentialStore.hasCredential(ssidData: ssidData) {
+                    credential = (0, .available)
+                } else {
+                    credential = userCredentialStatus(for: ssidData)
+                }
                 if credential.availability != .available {
                     if diagnosticSSIDs.insert(ssid).inserted {
                         diagnostics.append(
@@ -614,6 +654,9 @@ private final class CoreWLANClient {
                 CredentialDiagnostic(ssid: ssid, status: -1, availability: .unknown)
             )
         }
+        if let appPassword = AppCredentialStore.password(ssidData: ssidData) {
+            return appPassword
+        }
         guard let userDomain = CWKeychainDomain(rawValue: 1) else {
             throw CLIError.noSavedCredential(
                 CredentialDiagnostic(ssid: ssid, status: -1, availability: .unknown)
@@ -648,10 +691,86 @@ private final class CoreWLANClient {
     }
 }
 
+private enum AppCredentialStore {
+    private static let service = AppCredentialIdentity.service
+
+    static func hasCredential(ssidData: Data) -> Bool {
+        password(ssidData: ssidData) != nil
+    }
+
+    static func password(ssidData: Data) -> String? {
+        let query: [CFString: Any] = [
+            kSecClass: kSecClassGenericPassword,
+            kSecAttrService: service as CFString,
+            kSecAttrAccount: AppCredentialIdentity.account(for: ssidData) as CFString,
+            kSecAttrSynchronizable: kCFBooleanFalse as Any,
+            kSecMatchLimit: kSecMatchLimitOne,
+            kSecReturnData: kCFBooleanTrue as Any
+        ]
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let data = result as? Data,
+              let password = String(data: data, encoding: .utf8),
+              !password.isEmpty else {
+            return nil
+        }
+        return password
+    }
+
+    static func save(password: String, ssidData: Data) throws {
+        let account = AppCredentialIdentity.account(for: ssidData)
+        let query: [CFString: Any] = [
+            kSecClass: kSecClassGenericPassword,
+            kSecAttrService: service as CFString,
+            kSecAttrAccount: account as CFString,
+            kSecAttrSynchronizable: kCFBooleanFalse as Any
+        ]
+        let attributes: [CFString: Any] = [
+            kSecValueData: Data(password.utf8),
+            kSecAttrIsInvisible: kCFBooleanTrue as Any
+        ]
+        let addAttributes = query.merging(attributes) { _, new in new }
+        var result: CFTypeRef?
+        let addStatus = SecItemAdd(addAttributes as CFDictionary, &result)
+        if addStatus == errSecSuccess {
+            return
+        }
+        guard addStatus == errSecDuplicateItem else {
+            throw CLIError.keychainFailure(addStatus)
+        }
+        let updateStatus = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        guard updateStatus == errSecSuccess else {
+            throw CLIError.keychainFailure(updateStatus)
+        }
+    }
+}
+
+private func readHiddenPassword(prompt: String) -> String? {
+    guard isatty(STDIN_FILENO) == 1, isatty(STDERR_FILENO) == 1 else {
+        return nil
+    }
+    var buffer = [CChar](repeating: 0, count: 1024)
+    defer {
+        buffer.withUnsafeMutableBytes { bytes in
+            if let baseAddress = bytes.baseAddress {
+                memset(baseAddress, 0, bytes.count)
+            }
+        }
+    }
+    guard let password = buffer.withUnsafeMutableBufferPointer({ pointer in
+        readpassphrase(prompt, pointer.baseAddress, pointer.count, RPP_ECHO_OFF | RPP_REQUIRE_TTY)
+    }) else {
+        return nil
+    }
+    return String(cString: password)
+}
+
 private enum CLIError: Error, CustomStringConvertible {
     case noWiFiInterface
     case targetNotVisible(String)
     case noSavedCredential(CredentialDiagnostic)
+    case credentialInputCancelled
+    case keychainFailure(Int32)
     case currentRecovered
     case targetNoLongerQualifies(String)
 
@@ -660,6 +779,8 @@ private enum CLIError: Error, CustomStringConvertible {
         case .noWiFiInterface: "no Wi-Fi interface is available"
         case .targetNotVisible(let ssid): "target SSID is not visible: \(ssid)"
         case .noSavedCredential(let diagnostic): diagnostic.description
+        case .credentialInputCancelled: "credential setup cancelled or requires an interactive terminal"
+        case .keychainFailure(let status): "stage=credential_store code=\(status) classification=keychain_write_failed"
         case .currentRecovered: "current network recovered before association"
         case .targetNoLongerQualifies(let ssid): "target SSID no longer meets the safety margin: \(ssid)"
         }

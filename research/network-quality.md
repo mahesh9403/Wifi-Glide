@@ -140,6 +140,13 @@ Full upload/download throughput:
 The current POC already uses bounded TCP and HTTPS readiness checks after the selected network is
 joined. It does not implement a bandwidth test. That is the correct default for automatic mode.
 
+When CoreWLAN returns an unknown user-keychain status such as `4097`, Wi-Fi Glide offers a separate
+onboarding path rather than querying the System keychain: the user can enter a network password via
+a no-echo terminal prompt, and Wi-Fi Glide stores it as an app-owned generic-password item in the
+current user's Keychain. Candidate eligibility then checks the app-owned item first, and association
+retrieves it only at the final association boundary. This avoids administrator prompts while keeping
+the password out of arguments, logs, and project files.
+
 ## Credential and association failure handling
 
 Remembered profile and accessible password are different facts. Wi-Fi Glide now keeps them

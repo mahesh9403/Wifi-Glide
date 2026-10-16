@@ -39,4 +39,12 @@ final class DiagnosticsTests: XCTestCase {
         XCTAssertTrue(diagnostic.description.contains("classification=unknown"))
         XCTAssertFalse(diagnostic.description.lowercased().contains("password"))
     }
+
+    func testAppCredentialIdentityUsesRawSSIDBytes() {
+        let first = AppCredentialIdentity.account(for: Data([0x41, 0x00, 0x42]))
+        let second = AppCredentialIdentity.account(for: Data([0x41, 0x42]))
+        XCTAssertNotEqual(first, second)
+        XCTAssertTrue(first.hasPrefix("ssid."))
+        XCTAssertFalse(first.contains("password"))
+    }
 }

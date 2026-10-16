@@ -118,6 +118,34 @@ and classification (`missing`, `interaction-required`, `interaction-not-allowed`
 It does not print passwords or the complete Keychain response. Association failures report their
 stage and CoreWLAN domain/code classification instead of the generic Swift enum error message.
 
+## Add a Wi-Fi Glide credential without administrator access
+
+If CoreWLAN reports `status=4097 classification=unknown` for the user Wi-Fi keychain, macOS has
+remembered the network but is not exposing its existing credential to this process. Do not enter
+administrator credentials and do not use the System keychain as a workaround. Add an app-owned
+credential instead:
+
+```sh
+"dist/Wi-Fi Glide.app/Contents/MacOS/WiFiGlide" --configure-credential "Amma"
+```
+
+The SSID must be visible to the Mac. The command asks for the password with terminal echo disabled
+and stores it as an app-owned generic-password item in the current user's Keychain. The password is
+not placed in shell history, arguments, output, or project files. Repeat for `Amma5g` and any other
+approved personal network you want Wi-Fi Glide to use.
+
+After configuring the credentials, verify eligibility without switching:
+
+```sh
+"dist/Wi-Fi Glide.app/Contents/MacOS/WiFiGlide" --once \
+  --allow-ssid "Ghaghan" \
+  --allow-ssid "Amma5g" \
+  --allow-ssid "Amma"
+```
+
+The output should list configured networks as eligible saved personal networks. This app-owned
+credential flow is still a local POC; enterprise/EAP networks are not supported.
+
 ## Why Wi-Fi Glide does not run speed tests for every candidate
 
 RSSI/SNR can rank a candidate without joining it. Internet speed, gateway latency, DNS, and HTTPS
