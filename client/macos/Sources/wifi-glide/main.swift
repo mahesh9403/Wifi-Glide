@@ -136,6 +136,9 @@ struct WiFiGlideCLI {
         } catch let error as OptionsError {
             fputs("Error: \(error.description)\n\n\(Options.help)\n", stderr)
             exit(2)
+        } catch let error as CLIError {
+            fputs("Wi-Fi Glide stopped: \(error.description)\n", stderr)
+            exit(1)
         } catch {
             fputs("Wi-Fi Glide stopped: \(error.localizedDescription)\n", stderr)
             exit(1)
