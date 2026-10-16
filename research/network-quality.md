@@ -140,6 +140,30 @@ Full upload/download throughput:
 The current POC already uses bounded TCP and HTTPS readiness checks after the selected network is
 joined. It does not implement a bandwidth test. That is the correct default for automatic mode.
 
+## Credential and association failure handling
+
+Remembered profile and accessible password are different facts. Wi-Fi Glide now keeps them
+separate:
+
+```text
+remembered personal profile
+→ user-keychain presence check
+→ credential-eligible candidate
+→ decision engine
+→ just-in-time user-keychain password retrieval
+→ CoreWLAN association
+```
+
+The System keychain is deliberately not queried because it can require administrator
+authentication. If the user-keychain lookup returns an interaction, authorization, service, or
+unknown status, Wi-Fi Glide excludes the candidate and prints only a redacted status/classification.
+It does not treat that situation as an access failure from the Wi-Fi router.
+
+If CoreWLAN is reached, errors are reported by stage and by non-secret domain/code classification,
+including association denied, invalid PMK, supplicant timeout, IPC failure, operation not permitted,
+and timeout. This makes the next real-device test distinguish credential availability from an
+actual AP association failure.
+
 ## Recommended switching rule
 
 For the Mac POC's conservative profile:

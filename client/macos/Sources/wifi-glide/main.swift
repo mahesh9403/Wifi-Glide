@@ -34,6 +34,9 @@ struct WiFiGlideCLI {
                     interfaceAvailable: client.interfaceAvailable(),
                     interfaceRSSI: client.interfaceRSSI()
                 )
+                for diagnostic in snapshot.credentialDiagnostics {
+                    print("  \(diagnostic)")
+                }
                 return
             }
 
@@ -44,6 +47,8 @@ struct WiFiGlideCLI {
             let startedAt = Date()
             var lastActiveScanAt: Date?
             var cachedVisibleNetworks: [WiFiObservation] = []
+            var cachedCredentialEligibleSSIDs = Set<String>()
+            var cachedCredentialDiagnostics: [CredentialDiagnostic] = []
             while Date().timeIntervalSince(startedAt) < options.duration {
                 let currentOnly = try client.currentNetwork()
                 let interfaceAvailable = client.interfaceAvailable()
@@ -66,7 +71,10 @@ struct WiFiGlideCLI {
                 let shouldScan = needsCandidateScan &&
                     (lastActiveScanAt == nil || now.timeIntervalSince(lastActiveScanAt!) >= scanCooldown)
                 if shouldScan {
-                    cachedVisibleNetworks = try client.visibleNetworks(approvedSSIDs: options.approvedSSIDs)
+                    let scan = try client.candidateScan(approvedSSIDs: options.approvedSSIDs)
+                    cachedVisibleNetworks = scan.observations
+                    cachedCredentialEligibleSSIDs = scan.credentialEligibleSSIDs
+                    cachedCredentialDiagnostics = scan.credentialDiagnostics
                     lastActiveScanAt = now
                 }
                 let visible = cachedVisibleNetworks
@@ -75,10 +83,15 @@ struct WiFiGlideCLI {
                     current: current,
                     visibleNetworks: visible,
                     approvedSSIDs: options.approvedSSIDs,
-                    credentialEligibleSSIDs: options.approvedSSIDs,
+                    credentialEligibleSSIDs: cachedCredentialEligibleSSIDs,
                     traffic: .unknown,
                     now: now
                 )
+                if shouldScan {
+                    for diagnostic in cachedCredentialDiagnostics {
+                        print("  \(diagnostic)")
+                    }
+                }
                 state = result.0
 
                 printDecision(
@@ -275,6 +288,13 @@ private enum OptionsError: Error, CustomStringConvertible {
 private struct Snapshot {
     let current: WiFiObservation?
     let visible: [WiFiObservation]
+    let credentialDiagnostics: [CredentialDiagnostic]
+}
+
+private struct CandidateScan {
+    let observations: [WiFiObservation]
+    let credentialEligibleSSIDs: Set<String>
+    let credentialDiagnostics: [CredentialDiagnostic]
 }
 
 private struct AssociationOutcome {
@@ -308,8 +328,14 @@ private final class CoreWLANClient {
 
     func snapshot(activeScan: Bool, approvedSSIDs: Set<String>) throws -> Snapshot {
         let current = try currentNetwork()
-        let visible = activeScan ? try visibleNetworks(approvedSSIDs: approvedSSIDs) : []
-        return Snapshot(current: current, visible: visible)
+        let scan = activeScan
+            ? try candidateScan(approvedSSIDs: approvedSSIDs)
+            : CandidateScan(observations: [], credentialEligibleSSIDs: [], credentialDiagnostics: [])
+        return Snapshot(
+            current: current,
+            visible: scan.observations,
+            credentialDiagnostics: scan.credentialDiagnostics
+        )
     }
 
     func currentNetwork() throws -> WiFiObservation? {
@@ -327,14 +353,19 @@ private final class CoreWLANClient {
         }
     }
 
-    func visibleNetworks(approvedSSIDs: Set<String>) throws -> [WiFiObservation] {
-        guard !approvedSSIDs.isEmpty else { return [] }
+    func candidateScan(approvedSSIDs: Set<String>) throws -> CandidateScan {
+        guard !approvedSSIDs.isEmpty else {
+            return CandidateScan(observations: [], credentialEligibleSSIDs: [], credentialDiagnostics: [])
+        }
         return try queue.sync {
             guard let interface = client.interface() else {
                 throw CLIError.noWiFiInterface
             }
             let scanned = try interface.scanForNetworks(withSSID: nil)
             var strongestBySSIDData: [Data: CWNetwork] = [:]
+            var eligibleSSIDs = Set<String>()
+            var diagnostics: [CredentialDiagnostic] = []
+            var diagnosticSSIDs = Set<String>()
             for network in scanned {
                 guard let ssid = network.ssid,
                       let ssidData = network.ssidData,
@@ -342,6 +373,21 @@ private final class CoreWLANClient {
                       isSavedPersonalProfile(network: network, interface: interface) else {
                     continue
                 }
+
+                let credential = userCredentialStatus(for: ssidData)
+                if credential.availability != .available {
+                    if diagnosticSSIDs.insert(ssid).inserted {
+                        diagnostics.append(
+                            CredentialDiagnostic(
+                                ssid: ssid,
+                                status: credential.status,
+                                availability: credential.availability
+                            )
+                        )
+                    }
+                    continue
+                }
+                eligibleSSIDs.insert(ssid)
                 if let existing = strongestBySSIDData[ssidData], existing.rssiValue >= network.rssiValue {
                     continue
                 }
@@ -359,10 +405,14 @@ private final class CoreWLANClient {
                         noise: noise == 0 ? nil : noise
                     )
                 }
-            return eligibleNetworks.sorted {
-                if $0.rssi == $1.rssi { return $0.ssid < $1.ssid }
-                return $0.rssi > $1.rssi
-            }
+            return CandidateScan(
+                observations: eligibleNetworks.sorted {
+                    if $0.rssi == $1.rssi { return $0.ssid < $1.ssid }
+                    return $0.rssi > $1.rssi
+                },
+                credentialEligibleSSIDs: eligibleSSIDs,
+                credentialDiagnostics: diagnostics.sorted { $0.ssid < $1.ssid }
+            )
         }
     }
 
@@ -418,9 +468,7 @@ private final class CoreWLANClient {
                     .first else {
                     throw CLIError.targetNotVisible(ssid)
                 }
-                guard let password = savedPassword(for: ssid) else {
-                    throw CLIError.noSavedCredential(ssid)
-                }
+                let password = try savedPassword(for: ssid)
 
                 // Revalidate the same policy inputs inside the serialized CoreWLAN section
                 // immediately before association. The health probe is necessarily a snapshot
@@ -491,7 +539,7 @@ private final class CoreWLANClient {
             return AssociationOutcome(
                 attempted: associationStarted,
                 success: false,
-                message: "FAILED: \(error.localizedDescription)\(rollbackMessage)"
+                message: "FAILED: \(nonSecretErrorDescription(error, ssid: ssid, stage: associationStarted ? "association_request" : "preflight"))\(rollbackMessage)"
             )
         }
     }
@@ -525,9 +573,7 @@ private final class CoreWLANClient {
             .first else {
             throw CLIError.targetNotVisible(ssid)
         }
-        guard let password = savedPassword(for: ssid) else {
-            throw CLIError.noSavedCredential(ssid)
-        }
+        let password = try savedPassword(for: ssid)
         try interface.associate(to: target, password: password)
     }
 
@@ -554,15 +600,46 @@ private final class CoreWLANClient {
         [2, 3, 4, 5, 11, 13].contains(security.rawValue)
     }
 
-    private func savedPassword(for ssid: String) -> String? {
-        guard let ssidData = ssid.data(using: .utf8) else { return nil }
-        guard let userDomain = CWKeychainDomain(rawValue: 1) else { return nil }
+    private func userCredentialStatus(for ssidData: Data) -> (status: Int32, availability: CredentialAvailability) {
+        guard let userDomain = CWKeychainDomain(rawValue: 1) else {
+            return (-1, .unknown)
+        }
+        let status = CWKeychainFindWiFiPassword(userDomain, ssidData, nil)
+        return (status, WiFiFailureClassifier.credentialAvailability(status: status))
+    }
+
+    private func savedPassword(for ssid: String) throws -> String {
+        guard let ssidData = ssid.data(using: .utf8) else {
+            throw CLIError.noSavedCredential(
+                CredentialDiagnostic(ssid: ssid, status: -1, availability: .unknown)
+            )
+        }
+        guard let userDomain = CWKeychainDomain(rawValue: 1) else {
+            throw CLIError.noSavedCredential(
+                CredentialDiagnostic(ssid: ssid, status: -1, availability: .unknown)
+            )
+        }
         var password: NSString?
         let status = CWKeychainFindWiFiPassword(userDomain, ssidData, &password)
-        if status == 0, let password {
+        let availability = WiFiFailureClassifier.credentialAvailability(status: status)
+        if availability == .available, let password, password.length > 0 {
             return password as String
         }
-        return nil
+        throw CLIError.noSavedCredential(
+            CredentialDiagnostic(ssid: ssid, status: status, availability: availability)
+        )
+    }
+
+    private func nonSecretErrorDescription(_ error: Error, ssid: String, stage: String) -> String {
+        if let cliError = error as? CLIError {
+            return cliError.description
+        }
+        let nsError = error as NSError
+        let classification = WiFiFailureClassifier.associationFailure(
+            domain: nsError.domain,
+            code: Int32(nsError.code)
+        )
+        return "stage=\(stage) target=\(ssid) domain=\(nsError.domain) code=\(nsError.code) classification=\(classification.rawValue)"
     }
 
     private func format(_ value: Double?) -> String {
@@ -574,7 +651,7 @@ private final class CoreWLANClient {
 private enum CLIError: Error, CustomStringConvertible {
     case noWiFiInterface
     case targetNotVisible(String)
-    case noSavedCredential(String)
+    case noSavedCredential(CredentialDiagnostic)
     case currentRecovered
     case targetNoLongerQualifies(String)
 
@@ -582,7 +659,7 @@ private enum CLIError: Error, CustomStringConvertible {
         switch self {
         case .noWiFiInterface: "no Wi-Fi interface is available"
         case .targetNotVisible(let ssid): "target SSID is not visible: \(ssid)"
-        case .noSavedCredential(let ssid): "no user-keychain Wi-Fi credential found for approved SSID: \(ssid)"
+        case .noSavedCredential(let diagnostic): diagnostic.description
         case .currentRecovered: "current network recovered before association"
         case .targetNoLongerQualifies(let ssid): "target SSID no longer meets the safety margin: \(ssid)"
         }

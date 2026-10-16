@@ -113,6 +113,11 @@ administrator credentials. If no user credential is available, the POC refuses t
 than passing an undocumented nil password. The credential is held in memory for the association
 call and is not persisted by Wi-Fi Glide.
 
+Credential filtering reports non-secret diagnostics such as the SSID, user-keychain status code,
+and classification (`missing`, `interaction-required`, `interaction-not-allowed`, or `unknown`).
+It does not print passwords or the complete Keychain response. Association failures report their
+stage and CoreWLAN domain/code classification instead of the generic Swift enum error message.
+
 ## Why Wi-Fi Glide does not run speed tests for every candidate
 
 RSSI/SNR can rank a candidate without joining it. Internet speed, gateway latency, DNS, and HTTPS

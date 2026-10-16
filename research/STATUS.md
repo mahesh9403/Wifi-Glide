@@ -96,6 +96,12 @@ better error classification and a supported credential-resolution strategy. The 
 icon itself is not used as an input: it summarizes the current network only, while Wi-Fi Glide
 uses CoreWLAN's current-interface and scan-result measurements to compare approved candidates.
 
+The association failure path has now been tightened. Credential eligibility is computed before the
+decision engine from a user-keychain presence check; the System keychain is never queried. Raw
+Keychain status codes are classified without exposing secrets, and CoreWLAN/NSError association
+failures retain their domain, numeric code, and non-secret classification. A candidate with an
+unavailable user credential is no longer emitted as `WOULD-SWITCH` and then rejected late.
+
 ## Network finding that changes the product decision
 
 If the physical networks can be changed, the best solution remains network-native roaming:
