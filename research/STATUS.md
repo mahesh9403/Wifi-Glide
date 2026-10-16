@@ -82,6 +82,20 @@ prompt. The active path still fails closed if it cannot obtain a user-keychain c
 rebuilt ad-hoc app requires its Location Services permission to be granted again if macOS treats
 the new signature as a new app.
 
+After the final Location Services authorization, the bundled POC reported three eligible remembered
+personal networks: `Amma` at approximately `-49 dBm`, `Amma5g` at approximately `-53 dBm`, and
+`Ghaghan` at approximately `-75 dBm`, while the Mac was connected to `Ghaghan` at approximately
+`-83 dBm`. The 60-second observe-only run waited through weak dwell, scanned the three eligible
+networks, sustained the candidate dwell, and emitted `WOULD-SWITCH` for `Amma` with an advantage of
+approximately 32–34 dB. The Mac remained on `Ghaghan`, as required by observe-only mode.
+
+An explicitly confirmed active test then reached the same decision and selected `Amma` with an
+advantage of approximately 38 dB. The association attempt failed before the Mac changed networks,
+so the radio-ranking logic was validated but the credential/CoreWLAN association path still needs a
+better error classification and a supported credential-resolution strategy. The current Wi-Fi
+icon itself is not used as an input: it summarizes the current network only, while Wi-Fi Glide
+uses CoreWLAN's current-interface and scan-result measurements to compare approved candidates.
+
 ## Network finding that changes the product decision
 
 If the physical networks can be changed, the best solution remains network-native roaming:

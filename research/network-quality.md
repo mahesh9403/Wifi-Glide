@@ -67,6 +67,38 @@ RSSI is a radio measurement, not Internet speed. A strong signal can have a cong
 point, packet loss, a broken gateway, or a slow ISP. A lower RSSI can still be usable. Therefore,
 RSSI/SNR should be used to shortlist and rank candidates, not to claim that one ISP is faster.
 
+## What the Wi-Fi icon tells us
+
+The Wi-Fi icon is a useful user-interface clue, but not a reusable network-selection API.
+
+The bars normally summarize the **current association** using system-owned radio/link information
+such as received signal and link conditions. Apple does not publish the exact formula used by the
+icon, and the icon does not expose a ranked list of every saved or nearby network. It also does not
+tell us whether another SSID has lower latency, better Internet service, or a working gateway.
+
+Wi-Fi Glide should therefore not try to read or imitate the icon itself. It should use the public
+measurements behind the same general concept:
+
+```text
+current link:   CWInterface.rssiValue(), noise, transmit rate
+candidate link: CWNetwork.rssiValue, noise, channel/security metadata from a scan
+```
+
+Those values are both radio measurements in dBm and are appropriate for a relative comparison,
+with the normal caveats that scans are snapshots, antennas/bands can differ, and RSSI is not
+Internet quality. The POC already uses this model: it smooths current/candidate RSSI, keeps one
+strongest BSSID representative per SSID, then applies saved-profile eligibility, dwell, hysteresis,
+and cooldown rules.
+
+The useful product interpretation is:
+
+```text
+Wi-Fi icon:     “How healthy is the network I am using right now?”
+Wi-Fi Glide:    “Among approved remembered networks I can see, which radio looks materially better?”
+```
+
+The second question still requires a scan. The icon cannot answer it by itself.
+
 The quality signals have different roles:
 
 | Signal | Can be measured before joining a candidate? | Wi-Fi Glide use |
