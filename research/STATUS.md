@@ -110,6 +110,13 @@ Keychain status codes are classified without exposing secrets, and CoreWLAN/NSEr
 failures retain their domain, numeric code, and non-secret classification. A candidate with an
 unavailable user credential is no longer emitted as `WOULD-SWITCH` and then rejected late.
 
+The first active test with app-owned `Amma5g` credentials successfully associated to `Amma5g`, but
+the single immediate readiness probe failed and rollback to `Ghaghan` failed because `Ghaghan` did
+not yet have an app-owned credential. A follow-up snapshot confirmed the Mac was on `Amma5g` at
+approximately `-60 dBm`; gateway ping and HTTPS checks then passed. The readiness path now retries
+up to three times after association before declaring a target unusable, reducing false failures
+during DHCP/DNS route settlement.
+
 Because the observed status `4097` means the existing CoreWLAN user-keychain credential is not
 available to this process, the POC now supports explicit app-owned credential onboarding through
 `--configure-credential <SSID>`. The password is entered with terminal echo disabled and stored in

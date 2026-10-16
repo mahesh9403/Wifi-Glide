@@ -93,6 +93,10 @@ verifies the target SSID plus network-path/TCP/HTTPS readiness after association
 rollback attempt if the target joins but is not usable, then applies a cooldown. It cannot
 guarantee session continuity.
 
+After association, readiness is retried up to three times with a short delay so DHCP, routing, DNS,
+and HTTPS have time to settle. A transient first probe failure is not immediately treated as a bad
+candidate.
+
 The first run should be observe-only. Do not enable active switching during a meeting, call,
 large upload/download, or other work where a temporary network interruption is unacceptable.
 The POC does not yet have a complete traffic classifier, so active switching is fail-closed by

@@ -541,7 +541,7 @@ private final class CoreWLANClient {
             let deadline = Date().addingTimeInterval(15)
             while Date() < deadline {
                 if try currentNetwork()?.ssid == ssid {
-                    let health = await NetworkProbe.run()
+                    let health = await NetworkProbe.waitUntilUsable()
                     if health.isUsable {
                         return AssociationOutcome(
                             attempted: true,
@@ -601,7 +601,7 @@ private final class CoreWLANClient {
             let deadline = Date().addingTimeInterval(15)
             while Date() < deadline {
                 if try currentNetwork()?.ssid == ssid {
-                    return (await NetworkProbe.run()).isUsable
+                    return (await NetworkProbe.waitUntilUsable()).isUsable
                 }
                 try? await Task.sleep(for: .milliseconds(500))
             }
@@ -799,6 +799,21 @@ private enum CLIError: Error, CustomStringConvertible {
 }
 
 private enum NetworkProbe {
+    static func waitUntilUsable(
+        attempts: Int = 3,
+        retryDelay: Duration = .seconds(1)
+    ) async -> NetworkHealth {
+        var latest = NetworkHealth.unknown
+        for attempt in 0..<max(1, attempts) {
+            latest = await run()
+            if latest.isUsable || attempt == max(1, attempts) - 1 {
+                return latest
+            }
+            try? await Task.sleep(for: retryDelay)
+        }
+        return latest
+    }
+
     static func run(host: String = "apple.com", port: UInt16 = 443) async -> NetworkHealth {
         let connection = NWConnection(
             host: NWEndpoint.Host(host),
