@@ -129,10 +129,13 @@ credential instead:
 "dist/Wi-Fi Glide.app/Contents/MacOS/WiFiGlide" --configure-credential "Amma"
 ```
 
-The SSID must be visible to the Mac. The command asks for the password with terminal echo disabled
-and stores it as an app-owned generic-password item in the current user's Keychain. The password is
-not placed in shell history, arguments, output, or project files. Repeat for `Amma5g` and any other
-approved personal network you want Wi-Fi Glide to use.
+The SSID may be temporarily out of range. When it is visible, Wi-Fi Glide uses the scanned raw SSID
+bytes; otherwise it uses the exact UTF-8 SSID text you supplied. The command asks for the password
+with terminal echo disabled and stores it as an app-owned generic-password item in the current
+user's Keychain. The password is not placed in shell history, arguments, output, or project files.
+Repeat for `Amma5g` and any other approved personal network you want Wi-Fi Glide to use. The network
+will only become a switching candidate when it is later visible and matches a remembered personal
+profile.
 
 After configuring the credentials, verify eligibility without switching:
 

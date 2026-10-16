@@ -28,8 +28,12 @@ struct WiFiGlideCLI {
             var state = DecisionState()
 
             if case .configureCredential(let ssid) = options.mode {
-                try client.configureAppCredential(for: ssid)
-                print("Saved Wi-Fi Glide credential for \(ssid) in the user Keychain.")
+                let wasVisible = try client.configureAppCredential(for: ssid)
+                if wasVisible {
+                    print("Saved Wi-Fi Glide credential for visible SSID \(ssid) in the user Keychain.")
+                } else {
+                    print("Saved Wi-Fi Glide credential for \(ssid) in the user Keychain; SSID was not visible during setup.")
+                }
                 return
             }
 
@@ -356,14 +360,16 @@ private final class CoreWLANClient {
         )
     }
 
-    func configureAppCredential(for ssid: String) throws {
-        guard let ssidData = try rawSSIDData(for: ssid) else {
-            throw CLIError.targetNotVisible(ssid)
+    func configureAppCredential(for ssid: String) throws -> Bool {
+        let scannedSSIDData = try rawSSIDData(for: ssid)
+        guard let ssidData = scannedSSIDData ?? ssid.data(using: .utf8) else {
+            throw CLIError.invalidSSID(ssid)
         }
         guard let password = readHiddenPassword(prompt: "Wi-Fi password for \(ssid): ") else {
             throw CLIError.credentialInputCancelled
         }
         try AppCredentialStore.save(password: password, ssidData: ssidData)
+        return scannedSSIDData != nil
     }
 
     private func rawSSIDData(for ssid: String) throws -> Data? {
@@ -773,6 +779,7 @@ private enum CLIError: Error, CustomStringConvertible {
     case targetNotVisible(String)
     case noSavedCredential(CredentialDiagnostic)
     case credentialInputCancelled
+    case invalidSSID(String)
     case keychainFailure(Int32)
     case currentRecovered
     case targetNoLongerQualifies(String)
@@ -783,6 +790,7 @@ private enum CLIError: Error, CustomStringConvertible {
         case .targetNotVisible(let ssid): "target SSID is not visible: \(ssid)"
         case .noSavedCredential(let diagnostic): diagnostic.description
         case .credentialInputCancelled: "credential setup cancelled or requires an interactive terminal"
+        case .invalidSSID(let ssid): "SSID cannot be encoded for credential setup: \(ssid)"
         case .keychainFailure(let status): "stage=credential_store code=\(status) classification=keychain_write_failed"
         case .currentRecovered: "current network recovered before association"
         case .targetNoLongerQualifies(let ssid): "target SSID no longer meets the safety margin: \(ssid)"
