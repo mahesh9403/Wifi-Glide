@@ -1,0 +1,27 @@
+# Operating-system metadata
+.DS_Store
+Thumbs.db
+
+# Local editor settings
+.idea/
+.vscode/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Build and dependency output
+dist/
+build/
+out/
+.build/
+node_modules/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local research captures and logs
+*.log
+scratch/
