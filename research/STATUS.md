@@ -89,6 +89,14 @@ personal networks: `Amma` at approximately `-49 dBm`, `Amma5g` at approximately 
 networks, sustained the candidate dwell, and emitted `WOULD-SWITCH` for `Amma` with an advantage of
 approximately 32–34 dB. The Mac remained on `Ghaghan`, as required by observe-only mode.
 
+The app-owned credential flow was then exercised successfully: `Amma` was configured while it was
+out of range, `Amma5g` while visible, and a subsequent snapshot reported two eligible candidates.
+A 90-second observe-only run waited for `Ghaghan` to remain weak, discovered `Amma5g` and later
+`Amma`, sustained the candidate dwell, and emitted `WOULD-SWITCH` for `Amma5g` at approximately
+24 dB advantage and later for `Amma` at approximately 36 dB. No network change occurred because
+the run was observe-only. The only remaining `4097` diagnostic was for the current `Ghaghan`
+system-managed credential, which is not needed to evaluate the two app-owned target credentials.
+
 An explicitly confirmed active test then reached the same decision and selected `Amma` with an
 advantage of approximately 38 dB. The association attempt failed before the Mac changed networks,
 so the radio-ranking logic was validated but the credential/CoreWLAN association path still needs a
